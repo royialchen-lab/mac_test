@@ -1,0 +1,33 @@
+name: macOS node_exporter via Ansible
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ansible/**"
+      - ".github/workflows/macos-node-exporter.yml"
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install ansible
+
+      - name: Run playbook
+        working-directory: ansible
+        run: |
+          ansible-playbook -i hosts.ini deploy.yml -vv
+
+      - name: Show service status and logs (debug)
+        if: always()
+        run: |
+          sudo launchctl print system/com.prometheus.node_exporter || true
+          sudo tail -n 200 /var/log/node_exporter.log || true
+          sudo tail -n 200 /var/log/node_exporter.err || true
+          curl -fsS http://127.0.0.1:9100/metrics | head -n 20 || true
