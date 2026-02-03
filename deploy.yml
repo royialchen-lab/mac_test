@@ -1,0 +1,123 @@
+---
+- name: 部署 Linux 监控
+  hosts: linux_group
+  become: yes
+  vars:
+    node_exporter_version: "1.10.2"
+  tasks:
+    - name: Download Node Exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/node_exporter.tar.gz"
+
+    - name: Unarchive Node Exporter
+      unarchive:
+        src: "/tmp/node_exporter.tar.gz"
+        dest: "/usr/local/bin/"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        include: ["node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"]
+
+    - name: Create Systemd Service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User=root
+          ExecStart=/usr/local/bin/node_exporter
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start and Enable Service
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+        daemon_reload: yes
+
+- name: 部署 Windows 监控
+  hosts: windows_group
+  vars:
+    win_exporter_version: "0.31.3"
+  tasks:
+    - name: Download Windows Exporter MSI
+      win_get_url:
+        url: "https://github.com/prometheus-community/windows_exporter/releases/download/v{{ win_exporter_version }}/windows_exporter-{{ win_exporter_version }}-amd64.msi"
+        dest: "C:\\Windows\\Temp\\windows_exporter.msi"
+
+    - name: Install Windows Exporter
+      win_package:
+        path: "C:\\Windows\\Temp\\windows_exporter.msi"
+        state: present
+        arguments: 'LISTEN_PORT=9182'
+
+    - name: Ensure Service is Running
+      win_service:
+        name: windows_exporter
+        state: started
+        start_mode: auto
+
+    - name: Open Firewall Port
+      win_firewall_rule:
+        name: "Windows Exporter"
+        localport: 9182
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: yes
+
+- name: 部署 macOS 监控
+  hosts: mac_servers
+  become: yes
+  vars:
+    node_exporter_version: "1.10.2"
+  tasks:
+    - name: Download Node Exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.darwin-amd64.tar.gz"
+        dest: "/tmp/node_exporter_mac.tar.gz"
+
+    - name: Create Install Directory
+      file:
+        path: /usr/local/bin
+        state: directory
+
+    - name: Unarchive Node Exporter
+      unarchive:
+        src: "/tmp/node_exporter_mac.tar.gz"
+        dest: "/usr/local/bin/"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        include: ["node_exporter-{{ node_exporter_version }}.darwin-amd64/node_exporter"]
+
+    - name: Create Launchd Plist
+      copy:
+        dest: /Library/LaunchDaemons/com.prometheus.node_exporter.plist
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>Label</key>
+              <string>com.prometheus.node_exporter</string>
+              <key>ProgramArguments</key>
+              <array>
+                  <string>/usr/local/bin/node_exporter</string>
+              </array>
+              <key>RunAtLoad</key>
+              <true/>
+              <key>KeepAlive</key>
+              <true/>
+          </dict>
+          </plist>
+
+    - name: Load and Start Service
+      shell: |
+        launchctl load -w /Library/LaunchDaemons/com.prometheus.node_exporter.plist
+      ignore_errors: yes
