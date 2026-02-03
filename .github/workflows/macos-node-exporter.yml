@@ -14,14 +14,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Ansible
+      - name: Install Ansible (venv)
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install ansible
+          python3 -m venv .venv
+          source .venv/bin/activate
+          python -m pip install -U pip
+          pip install ansible
 
       - name: Run playbook
         working-directory: ansible
         run: |
+          source ../.venv/bin/activate
           ansible-playbook -i hosts.ini deploy.yml -vv
 
       - name: Show service status and logs (debug)
